@@ -22,7 +22,10 @@ console.log('API Key:', process.env.API_KEY);
 const app = express();
 
 // Enable CORS
-app.use(cors());
+app.use(cors({
+  origin: 'https://patchup-pdf-upload.vercel.app', // Your frontend's URL
+  credentials: true,
+}));
 
 // Configure multer for file upload with file type and size validation
 const storage = multer.diskStorage({
