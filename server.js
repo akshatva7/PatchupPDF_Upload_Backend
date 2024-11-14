@@ -7,25 +7,42 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises'; // Use the promise-based fs module
-import { GoogleAIFileManager } from "@google/generative-ai/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleAIFileManager } from '@google/generative-ai/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import admin from 'firebase-admin';
+import { createRequire } from 'module'; // Add this line
+
+// Create a require function
+const require = createRequire(import.meta.url);
+dotenv.config();
+// Import the service account JSON using require
+const serviceAccount = require(process.env.FIREBASEKEYPATH);
 
 // Emulate __dirname in ES6 modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables from .env file
-dotenv.config();
+
 console.log('API Key:', process.env.API_KEY);
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
 
 // Initialize Express app
 const app = express();
 
 // Enable CORS
-app.use(cors({
-  origin: 'https://patchup-pdf-upload.vercel.app', // Your frontend's URL
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: 'https://patchup-pdf-upload.vercel.app', // Your frontend's URL
+    credentials: true,
+  })
+);
 
 // Configure multer for file upload with file type and size validation
 const storage = multer.diskStorage({
@@ -35,7 +52,10 @@ const storage = multer.diskStorage({
   filename: function (req, file, cb) {
     // Append the date timestamp to the filename to ensure uniqueness
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    cb(
+      null,
+      `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`
+    );
   },
 });
 
@@ -43,7 +63,9 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const filetypes = /pdf/;
   const mimetype = filetypes.test(file.mimetype);
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+  const extname = filetypes.test(
+    path.extname(file.originalname).toLowerCase()
+  );
 
   if (mimetype && extname) {
     return cb(null, true);
@@ -67,12 +89,14 @@ if (!apiKey) {
 
 const fileManager = new GoogleAIFileManager(apiKey);
 const genAI = new GoogleGenerativeAI(apiKey);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// No need to reinitialize the model instance here since it's done in the route
 
 // Route: POST /upload
 app.post('/upload', upload.single('pdf'), async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ message: 'File upload failed. No file provided.' });
+    return res
+      .status(400)
+      .json({ message: 'File upload failed. No file provided.' });
   }
 
   const uploadPath = req.file.path;
@@ -88,10 +112,14 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
       displayName: req.file.originalname || 'Uploaded PDF',
     });
 
-    console.log(`Uploaded file ${uploadResult.file.displayName} as: ${uploadResult.file.uri}`);
+    console.log(
+      `Uploaded file ${uploadResult.file.displayName} as: ${uploadResult.file.uri}`
+    );
 
     // Initialize Google Generative AI model
-    const modelInstance = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const modelInstance = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+    });
 
     // Define the prompt for content generation
     const prompt =
@@ -127,10 +155,25 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
       extractedData = JSON.parse(extractedText);
     } catch (parseError) {
       console.error('Error parsing extracted text as JSON:', parseError);
-      return res.status(500).json({ message: 'Invalid JSON format in extracted data.' });
+      return res
+        .status(500)
+        .json({ message: 'Invalid JSON format in extracted data.' });
     }
 
     console.log('Extracted Table Data:', extractedData);
+
+    // Save extractedData to Firestore
+    try {
+      const docRef = db.collection('extractedData').doc(); // Automatically generate an ID
+      await docRef.set({
+        data: extractedData,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.log('Data saved to Firestore.');
+    } catch (dbError) {
+      console.error('Error saving data to Firestore:', dbError);
+      // Handle the error as needed
+    }
 
     // Optionally, delete the uploaded file from your server to save space
     try {

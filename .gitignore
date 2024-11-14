@@ -1,3 +1,4 @@
 .env
 node_modules/
 uploads/
+config/patchup-b6765-firebase-adminsdk-7mdos-3b37840fda.json
