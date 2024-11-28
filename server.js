@@ -132,7 +132,7 @@ Please return a JSON object containing the following fields:
    - \`Patch Name\`: The name of the patch.
    - \`Comments/Stands\`: Any comments or stand-related information.
 
-Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and return a well-structured JSON object.
+Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and return a well-structured JSON object. sanitize the input to ensure that the output is a valid JSON.
 `;
 
     // Request content generation based on the uploaded file and prompt
