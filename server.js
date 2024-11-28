@@ -115,15 +115,25 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
     console.log(
       `Uploaded file ${uploadResult.file.displayName} as: ${uploadResult.file.uri}`
     );
-
     // Initialize Google Generative AI model
     const modelInstance = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
     });
 
     // Define the prompt for content generation
-    const prompt =
-      "Extract a JSON table from the TECH RIDER section with columns 'Channel Number', 'Mic/DI', 'Patch Name', and 'Comments/Stands'.";
+    const prompt = `
+You are tasked with extracting specific data from the provided PDF. 
+Please return a JSON object containing the following fields:
+1. \`main_artist\`: The name of the main artist or performer.
+2. \`instruments_and_backlines\`: A list of instruments and backline equipment. Note that these may be listed under different headings, such as "gear list," "equipment list," or "setup."
+3. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
+   - \`Channel Number\`: The channel number.
+   - \`Mic/DI\`: The microphone or DI box used.
+   - \`Patch Name\`: The name of the patch.
+   - \`Comments/Stands\`: Any comments or stand-related information.
+
+Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and return a well-structured JSON object.
+`;
 
     // Request content generation based on the uploaded file and prompt
     const result = await modelInstance.generateContent([
@@ -135,6 +145,7 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
         },
       },
     ]);
+
 
     // Extract the text from the response
     let extractedText = await result.response.text();
