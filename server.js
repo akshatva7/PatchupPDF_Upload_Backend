@@ -121,9 +121,10 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
     });
 
     // Define the prompt for content generation
-    const prompt = `
-You are tasked with extracting specific data from the provided PDF. 
-Please return a JSON object containing the following fields:
+    // Define the prompt for content generation
+  const prompt = `
+You are tasked with extracting specific data from the provided PDF and outputting it strictly in valid JSON format. The JSON object should contain the following fields:
+
 1. \`main_artist\`: The name of the main artist or performer.
 2. \`instruments_and_backlines\`: A list of instruments and backline equipment. Note that these may be listed under different headings, such as "gear list," "equipment list," or "setup."
 3. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
@@ -132,8 +133,15 @@ Please return a JSON object containing the following fields:
    - \`Patch Name\`: The name of the patch.
    - \`Comments/Stands\`: Any comments or stand-related information.
 
-Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and return a well-structured JSON object. sanitize the input to ensure that the output is a valid JSON.
+### Important:
+- Always ensure the JSON follows proper syntax, including correct use of commas, brackets, and quotation marks.
+- If you cannot extract a particular field, include it with a null value (e.g., "main_artist": null).
+- Validate the JSON output to avoid errors.
+- Do not include any text outside of the JSON object. The output must only contain valid JSON.
+
+Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and output the structured JSON.
 `;
+
 
     // Request content generation based on the uploaded file and prompt
     const result = await modelInstance.generateContent([
