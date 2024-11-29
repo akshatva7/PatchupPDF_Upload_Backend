@@ -126,7 +126,13 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
 You are tasked with extracting specific data from the provided PDF and outputting it strictly in valid JSON format. The JSON object should contain the following fields:
 
 1. \`main_artist\`: The name of the main artist or performer.
-2. \`instruments_and_backlines\`: A list of instruments and backline equipment. Note that these may be listed under different headings, such as "gear list," "equipment list," or "setup."
+2. \`instruments_and_backlines\`: A table of instruments, backline equipment(Note that these may be listed under different headings, such as "gear list," "equipment list," or "setup.") control requirements and monitoring system(must include 'Mixing Consoles', 'IEM's - with configuration, 'Antenna' and 'stage racks'). 
+    These are the colums for the table:
+   - \`Item Number\`: serial Numbers for cross referencing.
+   - \`Equipment Name\`: The Name of the equipment that is specified.
+   - \`Quantity\`: Overall quantity regardless of which subsection it falls.
+   - \`Comments\`: Split of where all the item is needed, along with any comments specified in the rider.
+
 3. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
    - \`Channel Number\`: The channel number.
    - \`Mic/DI\`: The microphone or DI box used.
