@@ -138,7 +138,7 @@ You are tasked with extracting specific data from the provided PDF and outputtin
 - Do not include any text outside of the JSON object. The output must only contain valid JSON.
 
 Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and output the structured JSON.
-`;
+    `;
 
     // Request content generation based on the uploaded file and prompt
     const result = await modelInstance.generateContent([
@@ -153,7 +153,7 @@ Ensure flexibility in recognizing alternative headings or variations in terminol
 
     // Extract the text from the response
     let extractedText = await result.response.text();
-    // console.log('Raw Extracted Text:', extractedText);
+    console.log('Raw Extracted Text:', extractedText);
 
     // Process the extracted text to remove markdown formatting if present
     // Remove ```json and ``` markers
@@ -168,6 +168,7 @@ Ensure flexibility in recognizing alternative headings or variations in terminol
     let extractedData;
     try {
       extractedData = JSON.parse(extractedText);
+      console.log('Parsed Extracted Data:', JSON.stringify(extractedData, null, 2));
     } catch (parseError) {
       console.error('Error parsing extracted text as JSON:', parseError);
       return res
@@ -175,83 +176,108 @@ Ensure flexibility in recognizing alternative headings or variations in terminol
         .json({ message: 'Invalid JSON format in extracted data.' });
     }
 
-    console.log('Extracted Data:', extractedData);
+    // Proceed with Firestore write
+    try {
+      // Validate the presence of required fields
+      const { main_artist, patch_list_table } = extractedData;
 
-    // Validate the presence of required fields
-    const { main_artist, patch_list_table } = extractedData;
+      console.log('Main Artist:', main_artist);
+      console.log('Patch List Table:', patch_list_table);
 
-    if (!main_artist || !patch_list_table) {
-      return res.status(400).json({
-        message:
-          'Extracted data is missing required fields: main_artist or patch_list_table.',
-      });
-    }
-
-    // Sanitize the main_artist to create a valid Firestore collection name
-    // Firestore collection names cannot contain certain characters like '/', etc.
-    // Here, we'll replace spaces with underscores and remove problematic characters
-    const sanitizedMainArtist = main_artist
-      .replace(/\s+/g, '_')
-      .replace(/[^a-zA-Z0-9_]/g, '');
-
-    // Reference to the new collection named after the main_artist
-    const artistCollectionRef = db.collection(sanitizedMainArtist);
-
-    // Batch write to Firestore for efficiency
-    const batch = db.batch();
-
-    patch_list_table.forEach((patch) => {
-      const {
-        Channel_Number, // Assuming the JSON keys use underscores
-        Mic_DI,
-        Patch_Name,
-        Comments_Stands,
-      } = patch;
-
-      if (
-        Channel_Number === undefined ||
-        Mic_DI === undefined ||
-        Patch_Name === undefined ||
-        Comments_Stands === undefined
-      ) {
-        console.warn(
-          'Patch entry is missing one or more required fields. Skipping:',
-          patch
-        );
-        return; // Skip this entry
+      if (!main_artist || !patch_list_table) {
+        console.error('Missing main_artist or patch_list_table in extracted data.');
+        return res.status(400).json({
+          message:
+            'Extracted data is missing required fields: main_artist or patch_list_table.',
+        });
       }
 
-      // Create a document reference with channelNumber as the document ID
-      const docRef = artistCollectionRef.doc(String(Channel_Number));
+      console.log('Number of Patches:', patch_list_table.length);
 
-      // Set the document data
-      batch.set(docRef, {
-        channelNumber: Channel_Number,
-        micOrDi: Mic_DI,
-        patchName: Patch_Name,
-        commentsOrStand: Comments_Stands,
+      // Sanitize the main_artist to create a valid Firestore collection name
+      const sanitizedMainArtist = main_artist
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_]/g, '');
+
+      console.log('Sanitized Main Artist:', sanitizedMainArtist);
+
+      // Reference to the new collection named after the main_artist
+      const artistCollectionRef = db.collection(sanitizedMainArtist);
+
+      // Batch write to Firestore for efficiency
+      const batch = db.batch();
+      let writeCount = 0;
+
+      patch_list_table.forEach((patch) => {
+        const {
+          channelNumber, // Assuming camelCase
+          micOrDi,
+          patchName,
+          commentsOrStand,
+        } = patch;
+
+        if (
+          channelNumber === undefined ||
+          micOrDi === undefined ||
+          patchName === undefined ||
+          commentsOrStand === undefined
+        ) {
+          console.warn(
+            'Patch entry is missing one or more required fields. Skipping:',
+            patch
+          );
+          return; // Skip this entry
+        }
+
+        // Create a document reference with channelNumber as the document ID
+        const docRef = artistCollectionRef.doc(String(channelNumber));
+
+        // Set the document data
+        batch.set(docRef, {
+          channelNumber: channelNumber,
+          micOrDi: micOrDi,
+          patchName: patchName,
+          commentsOrStand: commentsOrStand,
+        });
+
+        writeCount++;
       });
-    });
 
-    // Commit the batch
-    await batch.commit();
-    console.log(`Data saved to Firestore collection: ${sanitizedMainArtist}`);
+      if (writeCount === 0) {
+        console.warn('No valid patch entries to write to Firestore.');
+        return res.status(400).json({
+          message: 'No valid patch entries found in patch_list_table.',
+        });
+      }
 
-    // Optionally, delete the uploaded file from your server to save space
-    try {
-      await fs.unlink(mediaPath);
-      console.log('Uploaded file deleted successfully.');
-    } catch (err) {
-      console.error('Error deleting uploaded file:', err);
-      // Continue without sending an error, since the main operation was successful
+      // Commit the batch
+      await batch.commit();
+      console.log(
+        `Successfully saved ${writeCount} patches to Firestore collection: ${sanitizedMainArtist}`
+      );
+
+      // Optionally, delete the uploaded file from your server to save space
+      try {
+        await fs.unlink(mediaPath);
+        console.log('Uploaded file deleted successfully.');
+      } catch (err) {
+        console.error('Error deleting uploaded file:', err);
+        // Continue without sending an error, since the main operation was successful
+      }
+
+      // Send the extracted data back to the frontend as JSON
+      res.status(200).json({
+        message: 'File uploaded and processed successfully.',
+        uploadConfirmation: 'File Upload successful.',
+        geminiResponse: extractedData,
+      });
+    } catch (firestoreError) {
+      console.error('Error writing to Firestore:', firestoreError);
+      res.status(500).json({
+        message: 'Error saving data to Firestore.',
+        error: firestoreError.message || 'Internal Server Error',
+      });
     }
-
-    // Send the extracted data back to the frontend as JSON
-    res.status(200).json({
-      message: 'File uploaded and processed successfully.',
-      uploadConfirmation: 'File Upload successful.',
-      geminiResponse: extractedData,
-    });
   } catch (error) {
     console.error('Error processing the PDF:', error);
 
@@ -289,3 +315,17 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// Optional: Test Firestore connection
+(async () => {
+  try {
+    const testDoc = db.collection('testCollection').doc('testDoc');
+    await testDoc.set({ testField: 'testValue' });
+    console.log('Firestore connection successful. Test document created.');
+    // Optionally, delete the test document
+    await testDoc.delete();
+    console.log('Test document deleted.');
+  } catch (testError) {
+    console.error('Error connecting to Firestore:', testError);
+  }
+})();
