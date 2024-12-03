@@ -126,10 +126,10 @@ You are tasked with extracting specific data from the provided PDF and outputtin
 
 1. \`main_artist\`: The name of the main artist or performer.
 2. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
-   - \`Channel Number\`: The channel number.
-   - \`Mic/DI\`: The microphone or DI box used.
-   - \`Patch Name\`: The name of the patch.
-   - \`Comments/Stands\`: Any comments or stand-related information.
+   - \`channelNumber\`: The channel number.
+   - \`micOrDi\`: The microphone or DI box used.
+   - \`patchName\`: The name of the patch.
+   - \`commentsOrStand\`: Any comments or stand-related information.
 
 ### Important:
 - Always ensure the JSON follows proper syntax, including correct use of commas, brackets, and quotation marks.
