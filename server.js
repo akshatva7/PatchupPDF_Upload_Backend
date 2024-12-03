@@ -121,19 +121,11 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
     });
 
     // Define the prompt for content generation
-    // Define the prompt for content generation
-  const prompt = `
+    const prompt = `
 You are tasked with extracting specific data from the provided PDF and outputting it strictly in valid JSON format. The JSON object should contain the following fields:
 
 1. \`main_artist\`: The name of the main artist or performer.
-2. \`instruments_and_backlines\`: A table of instruments, backline equipment(Note that these may be listed under different headings, such as "gear list," "equipment list," or "setup.") control requirements and monitoring system(must include 'Mixing Consoles', 'IEM's - with configuration, 'Antenna' and 'stage racks'). 
-    These are the colums for the table:
-   - \`Item Number\`: serial Numbers for cross referencing.
-   - \`Equipment Name\`: The Name of the equipment that is specified.
-   - \`Quantity\`: Overall quantity regardless of which subsection it falls.
-   - \`Comments\`: Split of where all the item is needed, along with any comments specified in the rider.
-
-3. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
+2. \`patch_list_table\`: A table extracted from the "PATCH LIST" section, with the following columns:
    - \`Channel Number\`: The channel number.
    - \`Mic/DI\`: The microphone or DI box used.
    - \`Patch Name\`: The name of the patch.
@@ -148,7 +140,6 @@ You are tasked with extracting specific data from the provided PDF and outputtin
 Ensure flexibility in recognizing alternative headings or variations in terminology for instruments and backlines. Parse the data accurately and output the structured JSON.
 `;
 
-
     // Request content generation based on the uploaded file and prompt
     const result = await modelInstance.generateContent([
       prompt,
@@ -159,7 +150,6 @@ Ensure flexibility in recognizing alternative headings or variations in terminol
         },
       },
     ]);
-
 
     // Extract the text from the response
     let extractedText = await result.response.text();
@@ -185,20 +175,67 @@ Ensure flexibility in recognizing alternative headings or variations in terminol
         .json({ message: 'Invalid JSON format in extracted data.' });
     }
 
-    console.log('Extracted Table Data:', extractedData);
+    console.log('Extracted Data:', extractedData);
 
-    // Save extractedData to Firestore
-    try {
-      const docRef = db.collection('extractedData').doc(); // Automatically generate an ID
-      await docRef.set({
-        data: extractedData,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    // Validate the presence of required fields
+    const { main_artist, patch_list_table } = extractedData;
+
+    if (!main_artist || !patch_list_table) {
+      return res.status(400).json({
+        message:
+          'Extracted data is missing required fields: main_artist or patch_list_table.',
       });
-      console.log('Data saved to Firestore.');
-    } catch (dbError) {
-      console.error('Error saving data to Firestore:', dbError);
-      // Handle the error as needed
     }
+
+    // Sanitize the main_artist to create a valid Firestore collection name
+    // Firestore collection names cannot contain certain characters like '/', etc.
+    // Here, we'll replace spaces with underscores and remove problematic characters
+    const sanitizedMainArtist = main_artist
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_]/g, '');
+
+    // Reference to the new collection named after the main_artist
+    const artistCollectionRef = db.collection(sanitizedMainArtist);
+
+    // Batch write to Firestore for efficiency
+    const batch = db.batch();
+
+    patch_list_table.forEach((patch) => {
+      const {
+        Channel_Number, // Assuming the JSON keys use underscores
+        Mic_DI,
+        Patch_Name,
+        Comments_Stands,
+      } = patch;
+
+      if (
+        Channel_Number === undefined ||
+        Mic_DI === undefined ||
+        Patch_Name === undefined ||
+        Comments_Stands === undefined
+      ) {
+        console.warn(
+          'Patch entry is missing one or more required fields. Skipping:',
+          patch
+        );
+        return; // Skip this entry
+      }
+
+      // Create a document reference with channelNumber as the document ID
+      const docRef = artistCollectionRef.doc(String(Channel_Number));
+
+      // Set the document data
+      batch.set(docRef, {
+        channelNumber: Channel_Number,
+        micOrDi: Mic_DI,
+        patchName: Patch_Name,
+        commentsOrStand: Comments_Stands,
+      });
+    });
+
+    // Commit the batch
+    await batch.commit();
+    console.log(`Data saved to Firestore collection: ${sanitizedMainArtist}`);
 
     // Optionally, delete the uploaded file from your server to save space
     try {
